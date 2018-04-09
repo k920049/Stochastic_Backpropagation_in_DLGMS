@@ -1,8 +1,8 @@
 import tensorflow as tf
 import numpy as np
 
-import models.generative
-import models.recognition
+from models.generative import Generative
+from models.recognition import Recognition
 
 def reset_graph(seed=42):
     tf.reset_default_graph()
@@ -13,6 +13,24 @@ n_inputs = 28 * 28
 n_outputs = 10
 learning_rate = tf.constant(0.001)
 k = tf.constant(0.1)
+eps = tf.constant(0.0000000001)
+
+s = {}
+def RMSProp(theta, beta, gradient, scope):
+    # updating momentum
+    if scope not in s.keys():
+        s[scope] = gradient
+    s[scope] = beta * s[scope]
+    rhs = tf.multiply(gradient, gradient)
+    print(scope, rhs)
+    rhs = (1 - beta) * gradient
+    s[scope] = s[scope] + rhs
+    # updating theta
+    rhs = tf.sqrt(s[scope]) + eps
+    rhs = tf.divide(gradient, rhs)
+    rhs = learning_rate * rhs
+    return tf.assign(theta, theta - rhs)
+
 
 def initialize():
     X = tf.placeholder(tf.float32, shape=(1, n_inputs), name="X")
@@ -38,7 +56,8 @@ def initialize():
                     sub_grad[l] = -sub_grad[l]
                     sub_grad[l] = sub_grad[l] + k * sub_theta[l]
                     # assign
-                    training_op = tf.assign(sub_theta[l], sub_theta[l] - learning_rate * sub_grad[l])
+                    opt_scope = "G" + "Dense" + str(i) + str(j) + str(l)
+                    training_op = RMSProp(theta=sub_theta[l], beta=0.9, gradient=sub_grad[l], scope=opt_scope)
                     ops.append(training_op)
         # optimizing parameters in matrices
         for i in range(0, 2):
@@ -47,7 +66,8 @@ def initialize():
             sub_grad = -sub_grad
             sub_grad = sub_grad + (k * matrix)
             # assign
-            training_op = tf.assign(matrix, matrix - learning_rate * sub_grad)
+            opt_scope = "G" + "Matrix" + str(i)
+            training_op = RMSProp(theta=matrix, beta=0.9, gradient=sub_grad, scope=opt_scope)
             ops.append(training_op)
 
         # gradients of mu and sigma
@@ -77,7 +97,8 @@ def initialize():
                         for l in range(len(gradient_wrt_mu)):
                             lhs = gradient_mu * tf.transpose(gradient_wrt_mu[l])
                             # assign
-                            training_op = tf.assign(sub_theta[l], sub_theta[l] - learning_rate * lhs)
+                            opt_scope = "R" + str(i) + str(j) + str(l) + each_scope
+                            training_op = RMSProp(theta=sub_theta[l], beta=0.9, gradient=lhs, scope=opt_scope)
                             ops.append(training_op)
                     else:
                         gradient_wrt_sigma = tf.gradients(sigma_stack[i], sub_theta)
@@ -85,12 +106,13 @@ def initialize():
                         for l in range(len(gradient_wrt_sigma)):
                             rhs = tf.matmul(gradient_sigma, gradient_wrt_sigma[l])
                             rhs = tf.linalg.trace(rhs)
-                            print(rhs)
                             # assign
-                            training_op = tf.assign(sub_theta[l], sub_theta[l] - learning_rate * rhs)
+                            opt_scope = "R" + str(i) + str(j) + str(l) + each_scope
+                            training_op = RMSProp(theta=sub_theta[l], beta=0.9, gradient=rhs, scope=opt_scope)
                             ops.append(training_op)
 
 def main():
+    initialize()
 
 
 if __name__ == "__main__":
