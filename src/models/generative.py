@@ -13,6 +13,7 @@ class Generative:
         self.param = None
         self.residual = None
         self.samples = None
+        self.act = tf.nn.elu
 
         self._build_network()
 
@@ -28,34 +29,38 @@ class Generative:
             residual_list.append(self._get_residual(epsilon, self.mu_stack[0], self.sigma_stack[0]))
             h = G * epsilon
             for i in range(1, self.num_layers):
-                for j in range(3):
-                    current_scope = "layer" + str(i) + "/depth" + str(j)
-                    h = tf.layers.dense(inputs=h,
-                                        units=self.num_units,
-                                        name=current_scope, reuse=tf.AUTO_REUSE)
-                epsilon = tf.contrib.distributions.MultivariateNormalFullCovariance(loc=self.mu_stack[i],
-                                                                                    covariance_matrix=tf.matmul(self.sigma_stack[i], tf.transpose(self.sigma_stack[i]))).sample()
+                current_scope = "layer" + str(i)
+                h = tf.layers.dense(inputs=h, units=self.num_units, activation=self.act, name=current_scope, reuse=tf.AUTO_REUSE)
+                epsilon = tf.contrib.distributions.MultivariateNormalFullCovariance(loc=self.mu_stack[i], covariance_matrix=tf.matmul(self.sigma_stack[i], tf.transpose(self.sigma_stack[i]))).sample()
                 sample_list.append(epsilon)
                 residual_list.append(self._get_residual(epsilon, self.mu_stack[i], self.sigma_stack[i]))
-                G = tf.get_variable(name="G" + str(i),
-                                    shape=[self.num_units, self.num_units])
+                G = tf.get_variable(name="G" + str(i), shape=[self.num_units, self.num_units])
                 h = h + G * epsilon
             self.samples = sample_list
             self.residual = residual_list
 
-            for j in range(3):
-                current_scope = "layer" + str(self.num_layers) + "/depth" + str(j)
-                h = tf.layers.dense(inputs=h,
-                                    units=self.num_outputs,
-                                    name=current_scope)
+            current_scope = "layer" + str(self.num_layers)
+            h = tf.layers.dense(inputs=h, units=self.num_outputs, activation=self.act, name=current_scope)
             self.param = h
     # getting samples
     def get_sample(self):
         return self.samples
+
+    def _pinv(self, A, b, reltol=1e-6):
+        # Compute the SVD of the input matrix A
+        s, u, v = tf.svd(A)
+        # Invert s, clear entries lower than reltol*s[0].
+        atol = tf.reduce_max(s) * reltol
+        s = tf.boolean_mask(s, s > atol)
+        s_inv = tf.diag(tf.concat([1. / s, tf.zeros([tf.size(b) - tf.size(s)])], 0))
+        # Compute v * s_inv * u_t * b from the left to avoid forming large intermediate matrices.
+        return tf.matmul(v, tf.matmul(s_inv, tf.matmul(u, tf.reshape(b, [-1, 1]), transpose_a=True)))
+
     # computing residual
     def _get_residual(self, sample, mu, sigma):
         sample = sample - mu
-        sample = sample * tf.matrix_inverse(sigma)
+        sample = tf.reshape(sample, shape=(self.num_units, 1))
+        sample = self._pinv(sigma, sample)
         return sample
     # getting residual
     def get_residual(self):
@@ -66,7 +71,7 @@ class Generative:
     # getting trainable variable
     def get_all(self):
         return tf.trainable_variables(scope=self.scope)
-    def get_trainable(self, i, j):
-        return tf.trainable_variables(scope=self.scope + "/layer" + str(i) + "/depth" + str(j))
+    def get_trainable(self, i):
+        return tf.trainable_variables(scope=self.scope + "/layer" + str(i))
     def get_matrix(self, i):
         return tf.trainable_variables(scope=self.scope + "/G" + str(i))
