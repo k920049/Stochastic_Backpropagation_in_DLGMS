@@ -22,12 +22,13 @@ def main():
             for iteration in range(mnist.train.num_examples // batch_size):
                 X_batch, y_batch = mnist.train.next_batch(batch_size)
                 for j in range(batch_size):
+                    print("Epoch: " + str(epoch) + ", batch: " + str(iteration) + ", iteration: " + str(j))
                     input = np.reshape(X_batch[j], (1, 784))
                     sess.run(ops, feed_dict={X : input})
-            input = np.reshape(X_batch[0], (1, 784))
-            energy = loss.eval(feed_dict={X : input})
-            print(energy)
-            probability = prob.eval(feed_dict={X : input})
+                input = np.reshape(X_batch[0], (1, 784))
+                energy = loss.eval(feed_dict={X : input})
+                probability = prob.eval(feed_dict={X : input})
+                print(probability.shape)
 
         save_path = saver.save(sess, "./my_model_final.ckpt")
 

@@ -71,7 +71,6 @@ class Recognition:
 
     # getting sigma
     def _get_sigma(self, d, u):
-        print(d, u)
         u = tf.reshape(u, shape=(1, self.num_units))
         # preprocess
         nu_inverse = tf.matmul(tf.diag(d), tf.transpose(u))

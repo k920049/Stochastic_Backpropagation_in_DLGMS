@@ -23,25 +23,42 @@ class Generative:
             sample_list = []
             G = tf.get_variable(name="G0",
                                 shape=[self.num_units, self.num_units])
-            epsilon = tf.contrib.distributions.MultivariateNormalFullCovariance(loc=self.mu_stack[0],
-                                                                                covariance_matrix=tf.matmul(self.sigma_stack[0], tf.transpose(self.sigma_stack[0]))).sample()
+            epsilon = tf.contrib.distributions.MultivariateNormalFullCovariance(loc=self.mu_stack[0], covariance_matrix=tf.matmul(self.sigma_stack[0], tf.transpose(self.sigma_stack[0]))).sample()
+            # [1, self.num_units]
+            epsilon = tf.reshape(epsilon, shape=(1, self.num_units))
             sample_list.append(epsilon)
+            # [1, self.num_units]
             residual_list.append(self._get_residual(epsilon, self.mu_stack[0], self.sigma_stack[0]))
-            h = G * epsilon
+
+            epsilon = tf.reshape(epsilon, shape=(self.num_units, 1))
+            h = tf.matmul(G, epsilon)
+            h = tf.reshape(h, shape = (1, self.num_units))
+
             for i in range(1, self.num_layers):
+                # Fully connected layer
                 current_scope = "layer" + str(i)
                 h = tf.layers.dense(inputs=h, units=self.num_units, activation=self.act, name=current_scope, reuse=tf.AUTO_REUSE)
+                # Sample once
                 epsilon = tf.contrib.distributions.MultivariateNormalFullCovariance(loc=self.mu_stack[i], covariance_matrix=tf.matmul(self.sigma_stack[i], tf.transpose(self.sigma_stack[i]))).sample()
+                epsilon = tf.reshape(epsilon, shape=(1, self.num_units))
+                # [1, self.num_units]
                 sample_list.append(epsilon)
                 residual_list.append(self._get_residual(epsilon, self.mu_stack[i], self.sigma_stack[i]))
                 G = tf.get_variable(name="G" + str(i), shape=[self.num_units, self.num_units])
-                h = h + G * epsilon
+                # Compute residual error at the current layer
+                epsilon = tf.reshape(epsilon, shape=(self.num_units, 1))
+                h = tf.matmul(G, epsilon)
+                h = tf.reshape(h, shape = (1, self.num_units))
+
             self.samples = sample_list
             self.residual = residual_list
 
             current_scope = "layer" + str(self.num_layers)
+            h = tf.reshape(h, shape=(1, self.num_units))
             h = tf.layers.dense(inputs=h, units=self.num_outputs, activation=self.act, name=current_scope)
+            # [num_outputs, 1]
             self.param = h
+            print("param ", self.param)
     # getting samples
     def get_sample(self):
         return self.samples
@@ -57,11 +74,12 @@ class Generative:
         return tf.matmul(v, tf.matmul(s_inv, tf.matmul(u, tf.reshape(b, [-1, 1]), transpose_a=True)))
 
     # computing residual
-    def _get_residual(self, sample, mu, sigma):
-        sample = sample - mu
+    def _get_residual(self, sample, mu, sigma, eps=10^6):
         sample = tf.reshape(sample, shape=(self.num_units, 1))
-        sample = self._pinv(sigma, sample)
-        return sample
+        mu = tf.reshape(mu, shape=(self.num_units, 1))
+        sample = sample - mu
+        # sample = self._pinv(sigma, sample)
+        return tf.reshape(sample, shape=(1, self.num_units))
     # getting residual
     def get_residual(self):
         return self.residual

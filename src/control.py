@@ -41,7 +41,9 @@ def initialize():
         mu_stack, sigma_stack, logdet_stack = r.get_param()
         g = Generative(mu_stack, sigma_stack, 2, n_inputs, n_outputs)
         logits = g.get_param()
+        print("logits: ", logits)
         prob = tf.nn.softmax(logits=logits)
+        print("Prob: ", prob)
         l_prob = tf.log(prob)
 
     with tf.name_scope("loss"):
